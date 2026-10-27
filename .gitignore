@@ -3,3 +3,7 @@ node_modules/
 *.log
 .DS_Store
 output/
+
+# local API keys (never commit)
+key/
+*.key

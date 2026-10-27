@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { getProvider, providers } from './providers.js';
@@ -11,6 +12,32 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.join(rootDir, 'public');
 
 const PORT = Number(process.env.PORT || 3600);
+
+// Load API keys from the local key/ directory (kept out of Git via .gitignore).
+// Priority: env var > key/<provider>.key > generic key/3d.key (assigned by KEY_PROVIDER, default tripo).
+function loadKeyFiles() {
+  const keyDir = path.join(rootDir, 'key');
+  const envFor = { tripo: 'TRIPO_API_KEY', meshy: 'MESHY_API_KEY' };
+  const readKey = (f) => {
+    try { return fs.readFileSync(f, 'utf8').trim().split('\n')[0].trim(); } catch { return ''; }
+  };
+  for (const [p, envName] of Object.entries(envFor)) {
+    if (!process.env[envName]) {
+      const v = readKey(path.join(keyDir, `${p}.key`));
+      if (v) process.env[envName] = v;
+    }
+  }
+  const generic = path.join(keyDir, '3d.key');
+  if (fs.existsSync(generic)) {
+    const target = (process.env.KEY_PROVIDER || 'tripo').toLowerCase();
+    const envName = envFor[target] || 'TRIPO_API_KEY';
+    if (!process.env[envName]) {
+      const v = readKey(generic);
+      if (v) process.env[envName] = v;
+    }
+  }
+}
+loadKeyFiles();
 
 // Bambu Lab P2S reference (used for on-screen print tips)
 const PRINTER_PROFILES = {
