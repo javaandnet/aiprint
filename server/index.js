@@ -6,6 +6,9 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { getProvider, providers } from './providers.js';
+import { slice, detectOrca } from './slicer.js';
+import { pushToPrinter } from './push.js';
+import { readStl, normalize, writeBinaryStl } from './stl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -47,6 +50,11 @@ const PRINTER_PROFILES = {
 // In-memory job store: id -> { provider, taskId, options, createdAt }
 const jobs = new Map();
 const JOB_TTL_MS = 1000 * 60 * 60 * 24; // 24h
+
+// Sliced artifacts: id -> { path, filename, format, jobId, createdAt }
+const slices = new Map();
+const outputDir = path.join(rootDir, 'output');
+fs.mkdirSync(outputDir, { recursive: true });
 
 function newId() {
   return crypto.randomBytes(8).toString('hex');
@@ -207,6 +215,88 @@ app.get('/api/jobs/:id/download', async (req, res) => {
   } catch (err) {
     console.error('[aiprint] download failed:', err.message);
     if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- Slicing (OrcaSlicer headless for Bambu P2S) ----
+async function downloadToBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`下载模型失败: HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// Expose whether a slicer is available so the UI can enable/disable slice buttons.
+app.get('/api/slicer', (req, res) => {
+  res.json({ success: true, data: { available: !!detectOrca(), printer: 'Bambu Lab P2S' } });
+});
+
+// Slice a finished generation into G-code or a 3MF project. Auto-scales to targetMM.
+app.post('/api/slice', express.json(), async (req, res) => {
+  try {
+    const { jobId, format = 'gcode', targetMM = 60, nozzle = '0.4', quality = '0.20mm Standard', material = 'Bambu PLA Basic' } = req.body || {};
+    const job = jobs.get(jobId);
+    if (!job) return res.status(404).json({ success: false, error: 'Job not found or expired.' });
+    if (!detectOrca()) return res.status(503).json({ success: false, error: '未找到 OrcaSlicer，无法切片。' });
+
+    const provider = getProvider(job.provider);
+    const state = await provider.getTask(process.env, job.taskId, job.kind || 'image-to-3d');
+    if (state.status !== 'SUCCEEDED') return res.status(409).json({ success: false, error: `模型未就绪（${state.status}）。` });
+
+    // Prefer STL (scalable + universally importable), then OBJ, then GLB.
+    const fmtKey = ['stl', 'obj', 'glb'].find((f) => state.models[f]);
+    if (!fmtKey) return res.status(422).json({ success: false, error: '该引擎未返回可切片模型文件。' });
+
+    const dir = path.join(outputDir, jobId);
+    fs.mkdirSync(dir, { recursive: true });
+    const buf = await downloadToBuffer(state.models[fmtKey]);
+    const rawPath = path.join(dir, `model.${fmtKey}`);
+    fs.writeFileSync(rawPath, buf);
+
+    let modelPath = rawPath;
+    if (fmtKey === 'stl') {
+      const scaled = normalize(readStl(buf), { targetMM: Number(targetMM) || 60, axis: 2 });
+      modelPath = path.join(dir, 'model_scaled.stl');
+      fs.writeFileSync(modelPath, writeBinaryStl(scaled.tris));
+    }
+
+    const out = await slice(modelPath, dir, { format, nozzle, quality, material });
+    const ext = format === '3mf' ? '3mf' : 'gcode';
+    const filename = `aiprint-${jobId}.${ext}`;
+    const finalPath = path.join(dir, filename);
+    if (out.output !== finalPath) fs.renameSync(out.output, finalPath);
+
+    const id = newId();
+    slices.set(id, { id, path: finalPath, filename, format: ext, jobId, slice: out.slice, createdAt: Date.now() });
+    console.log(`[aiprint] sliced ${jobId} (${fmtKey}, ${targetMM}mm) -> ${filename}`);
+    res.json({ success: true, data: { sliceId: id, format: ext, filename, slice: out.slice, scaled: fmtKey === 'stl' } });
+  } catch (err) {
+    console.error('[aiprint] slice failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Download a sliced artifact.
+app.get('/api/slice/:id/download', (req, res) => {
+  const s = slices.get(req.params.id);
+  if (!s) return res.status(404).json({ success: false, error: 'Sliced file not found.' });
+  res.setHeader('Content-Disposition', `attachment; filename="${s.filename}"`);
+  res.setHeader('Content-Type', s.format === '3mf' ? 'model/3mf' : 'text/plain');
+  fs.createReadStream(s.path).pipe(res);
+});
+
+// Push a sliced G-code directly to the P2S over the LAN (experimental).
+app.post('/api/slice/:id/push', express.json(), async (req, res) => {
+  try {
+    const s = slices.get(req.params.id);
+    if (!s) return res.status(404).json({ success: false, error: 'Sliced file not found.' });
+    if (s.format !== 'gcode') return res.status(422).json({ success: false, error: 'LAN 推送目前只支持 G-code 产物。' });
+    const { ip, accessCode, serial, autoStart = true } = req.body || {};
+    const logs = [];
+    const result = await pushToPrinter({ ip, accessCode, serial, gcodePath: s.path, filename: s.filename, autoStart, onLog: (m) => logs.push(m) });
+    res.json({ success: true, data: { ...result, logs } });
+  } catch (err) {
+    console.error('[aiprint] push failed:', err.message);
+    res.status(502).json({ success: false, error: err.message });
   }
 });
 

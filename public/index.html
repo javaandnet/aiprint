@@ -73,13 +73,40 @@
       <div class="downloads" id="downloads"></div>
       <div class="cost" id="cost"></div>
 
+      <div class="slice" id="slicePanel" hidden>
+        <h3>切片 · OrcaSlicer 自动（拓竹 P2S）</h3>
+        <div class="grid2">
+          <label>手办高度(mm)<input type="number" id="sizeMM" value="60" min="20" max="250" /></label>
+          <label>喷嘴<select id="nozzle"><option>0.2</option><option selected>0.4</option><option>0.6</option><option>0.8</option></select></label>
+          <label>层高/质量<select id="quality">
+            <option>0.12mm High Quality</option>
+            <option>0.16mm High Quality</option>
+            <option selected>0.20mm Standard</option>
+            <option>0.24mm Standard</option>
+          </select></label>
+          <label>耗材<input type="text" id="material" value="Bambu PLA Basic" /></label>
+        </div>
+        <div class="slicebtns">
+          <button type="button" class="sbtn" id="sliceGcode">切片→G-code</button>
+          <button type="button" class="sbtn" id="slice3mf">切片→3MF</button>
+          <button type="button" class="sbtn lan" id="slicePush">切片→推送到 P2S</button>
+        </div>
+        <div class="lanform" id="lanForm" hidden>
+          <label>打印机 IP<input type="text" id="lanIp" placeholder="192.168.x.x" /></label>
+          <label>Access Code<input type="password" id="lanCode" placeholder="局域网访问码(20位)" /></label>
+          <label>序列号<input type="text" id="lanSerial" placeholder="设备序列号" /></label>
+        </div>
+        <div class="slicestatus" id="sliceStatus" hidden><span id="sliceStatusText"></span><div class="bar"><div id="sliceBar"></div></div></div>
+        <div class="sliceout" id="sliceOut"></div>
+        <p class="hint" id="slicerHint"></p>
+      </div>
+
       <div class="tips">
         <h3>拓竹 P2S 打印提示</h3>
         <ul>
-          <li>打印体积 <b>256×256×256 mm</b>，下载文件后在切片时按此缩放。</li>
-          <li><b>STL / 3MF</b> 直接拖进 Bambu Studio；<b>3MF</b> 已含模型，最省事。</li>
-          <li>GLB 可在 <b>https://gltf-viewer.donmccurdy.com</b> 本地打开做 3D 预览。</li>
-          <li>AI 手办常不水密：Bambu Studio 导入后会自动修复；建议加 <b>底座 / 支撑</b>。</li>
+          <li>已接 <b>OrcaSlicer 无头切片</b>：自动把模型缩到你填的高度、平放在构建板上，直接出 P2S G-code。</li>
+          <li>切片需要 <b>STL</b>（Meshy 原生支持）；Tripo 仅返回 GLB，需先回 Meshy 或手动转换。</li>
+          <li>AI 手办常不水密：Orca/Bambu Studio 导入会尝试修复；建议加 <b>底座 / 支撑</b>。</li>
           <li>细胳膊、飘带等悬空易断，可切成分件打印后粘接。</li>
         </ul>
       </div>

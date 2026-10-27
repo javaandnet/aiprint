@@ -175,6 +175,8 @@ function renderResult(d, mode) {
 
   // remember the successful model so 换皮 can reuse it (retexture output is itself reusable too)
   lastSuccess = { jobId: d.jobId, provider: d.provider };
+  el('slicePanel').hidden = false;
+  el('sliceOut').innerHTML = '';
 
   const preview = el('preview');
   preview.innerHTML = '';
@@ -206,3 +208,99 @@ function renderResult(d, mode) {
 }
 
 loadProviders();
+
+// ---- slicing (OrcaSlicer) ----
+let lastSliceId = null;
+
+async function checkSlicer() {
+  try {
+    const res = await fetch('/api/slicer');
+    const { data } = await res.json();
+    if (!data.available) {
+      el('slicerHint').textContent = '未检测到本机 OrcaSlicer：安装后刷新页面即可自动切片（brew install --cask orcaslicer）。';
+      ['sliceGcode', 'slice3mf', 'slicePush'].forEach((id) => (el(id).disabled = true));
+    } else {
+      el('slicerHint').textContent = '已检测到 ' + data.printer + ' 切片环境，可直接出 G-code / 3MF 或局域网推送。';
+    }
+  } catch { /* ignore */ }
+}
+
+function setSlicing(on, text) {
+  el('sliceStatus').hidden = !on;
+  el('sliceStatusText').textContent = on ? text : '';
+  el('sliceBar').style.width = on ? '60%' : '0';
+  ['sliceGcode', 'slice3mf', 'slicePush'].forEach((id) => (el(id).disabled = on));
+}
+
+async function doSlice(format) {
+  if (!lastSuccess) { el('sliceOut').textContent = '请先生成一个模型。'; return; }
+  setSlicing(true, format === '3mf' ? '切片为 3MF 中（OrcaSlicer，十几秒到几分钟）…' : '切片为 G-code 中（OrcaSlicer，十几秒到几分钟）…');
+  el('sliceOut').innerHTML = '';
+  try {
+    const res = await fetch('/api/slice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobId: lastSuccess.jobId,
+        format,
+        targetMM: Number(el('sizeMM').value) || 60,
+        nozzle: el('nozzle').value,
+        quality: el('quality').value,
+        material: el('material').value,
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error);
+    lastSliceId = json.data.sliceId;
+    const s = json.data.slice;
+    el('sliceOut').innerHTML = '';
+    const a = document.createElement('a');
+    a.href = `/api/slice/${lastSliceId}/download`;
+    a.textContent = '下载 ' + json.data.filename;
+    a.setAttribute('download', '');
+    el('sliceOut').appendChild(a);
+    if (!json.data.scaled) el('sliceOut').append('（非 STL 来源，未自动缩放）');
+    return json.data;
+  } catch (err) {
+    showError('切片失败：' + err.message);
+  } finally {
+    setSlicing(false);
+  }
+}
+
+el('sliceGcode').addEventListener('click', () => doSlice('gcode'));
+el('slice3mf').addEventListener('click', () => doSlice('3mf'));
+
+el('slicePush').addEventListener('click', async () => {
+  // First click reveals the LAN form; if already shown, run push.
+  if (el('lanForm').hidden) { el('lanForm').hidden = false; el('slicePush').textContent = '确认推送到 P2S'; return; }
+  const ip = el('lanIp').value.trim();
+  const accessCode = el('lanCode').value.trim();
+  const serial = el('lanSerial').value.trim();
+  if (!ip || !accessCode || !serial) { showError('请填写打印机 IP、Access Code、序列号。'); return; }
+  // Ensure we have a gcode slice first.
+  let sliceId = lastSliceId;
+  const needFresh = !sliceId;
+  if (needFresh) { const d = await doSlice('gcode'); if (!d) return; sliceId = d.sliceId; }
+  setSlicing(true, '上传并推送到打印机中…');
+  try {
+    const res = await fetch(`/api/slice/${sliceId}/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip, accessCode, serial, autoStart: true }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error);
+    el('sliceOut').innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'pushlog';
+    div.textContent = (json.data.logs || []).join('\n');
+    el('sliceOut').appendChild(div);
+  } catch (err) {
+    showError('推送失败：' + err.message);
+  } finally {
+    setSlicing(false);
+  }
+});
+
+checkSlicer();

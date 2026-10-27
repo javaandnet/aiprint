@@ -100,6 +100,25 @@ button.primary:disabled { opacity: .5; cursor: not-allowed; }
 .downloads a.rec { border-color: var(--ok); color: var(--ok); }
 .cost { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
 .tips { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 10px; }
+.slice { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.slice h3 { margin: 0 0 10px; font-size: 15px; }
+.slice .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.slice .grid2 label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.slice .grid2 input, .slice .grid2 select { background: #0d1117; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px; }
+.slicebtns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.sbtn { background: #0d1117; border: 1px solid var(--accent); color: var(--accent); border-radius: 9px; padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.sbtn:hover { background: #12181f; }
+.sbtn.lan { border-color: var(--ok); color: var(--ok); }
+.sbtn:disabled { opacity: .45; cursor: not-allowed; }
+.lanform { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.lanform label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.lanform input { background: #0d1117; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px; }
+.slicestatus { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.slicestatus .bar { max-width: 200px; }
+#sliceStatusText { font-size: 12px; color: var(--muted); }
+.sliceout a { color: var(--ok); font-size: 13px; text-decoration: none; font-weight: 600; }
+.sliceout .pushlog { color: var(--muted); font-size: 12px; white-space: pre-wrap; margin-top: 4px; }
+.slice .hint { display: block; margin-top: 8px; }
 .tips h3 { margin: 0 0 8px; font-size: 15px; }
 .tips ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
 .tips b { color: var(--fg); }
