@@ -61,9 +61,10 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 
     const file = req.file;
     const imageUrl = req.body.image_url;
-    if (!file && !imageUrl) {
-      return res.status(400).json({ success: false, error: 'Provide an image file or image_url.' });
-    }
+    const dataUri = file ? `data:${file.mimetype};base64,${file.buffer.toString('base64')}` : null;
+
+    // Cost tiers: draft (cheap, mesh-only) | final (full textured) | retexture (meshy: re-skin an existing model)
+    const mode = (req.body.mode || 'final').toLowerCase();
 
     const options = {
       texture: req.body.texture !== 'false',
@@ -75,19 +76,48 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       faceLimit: req.body.face_limit ? Number(req.body.face_limit) : undefined,
     };
 
-    let payload;
-    if (file) {
-      const dataUri = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
-      payload = { imageDataUri: dataUri, imageBuffer: file.buffer, imageMime: file.mimetype, options };
-    } else {
-      payload = { imageUrl, options };
+    // ---- Retexture (Meshy only): reuse geometry, only redo the texture. ~10 credits. ----
+    if (mode === 'retexture') {
+      if (providerId !== 'meshy') {
+        return res.status(400).json({ success: false, error: '换皮（Retexture）目前仅 Meshy 支持。' });
+      }
+      const srcJob = jobs.get(req.body.source_job_id);
+      if (!srcJob || srcJob.provider !== 'meshy') {
+        return res.status(400).json({ success: false, error: '找不到可换皮的上一个 Meshy 任务，请先生成一个终稿。' });
+      }
+      const created = await provider.retexture(process.env, {
+        inputTaskId: srcJob.taskId,
+        texturePrompt: req.body.texture_prompt || undefined,
+        textureImageDataUri: dataUri || undefined,
+        options: { pbr: req.body.pbr === 'true', textureResolution: req.body.texture_resolution || undefined },
+      });
+      const id = newId();
+      jobs.set(id, { id, provider: providerId, taskId: created.taskId, kind: 'retexture', options, createdAt: Date.now() });
+      console.log(`[aiprint] retexture job ${id} -> meshy:${created.taskId} (from ${srcJob.taskId})`);
+      return res.json({ success: true, data: { jobId: id, provider: providerId, taskId: created.taskId, mode } });
     }
+
+    // ---- Apply draft/final presets ----
+    if (mode === 'draft') {
+      options.texture = false; // mesh-only, no texture -> cheapest
+      if (providerId === 'meshy') { options.aiModel = 'meshy-6-lite'; options.geometryResolution = undefined; }
+    } else if (providerId === 'meshy' && !options.aiModel) {
+      options.aiModel = 'latest'; // final pass defaults to Meshy 7.1
+    }
+
+    if (!file && !imageUrl) {
+      return res.status(400).json({ success: false, error: 'Provide an image file or image_url.' });
+    }
+
+    const payload = file
+      ? { imageDataUri: dataUri, imageBuffer: file.buffer, imageMime: file.mimetype, options }
+      : { imageUrl, options };
 
     const created = await provider.createTask(process.env, payload);
     const id = newId();
-    jobs.set(id, { id, provider: providerId, taskId: created.taskId, options, createdAt: Date.now() });
-    console.log(`[aiprint] job ${id} created -> ${providerId}:${created.taskId}`);
-    res.json({ success: true, data: { jobId: id, provider: providerId, taskId: created.taskId } });
+    jobs.set(id, { id, provider: providerId, taskId: created.taskId, kind: 'image-to-3d', options, createdAt: Date.now() });
+    console.log(`[aiprint] job ${id} (${mode}) created -> ${providerId}:${created.taskId}`);
+    res.json({ success: true, data: { jobId: id, provider: providerId, taskId: created.taskId, mode } });
   } catch (err) {
     console.error('[aiprint] generate failed:', err.message);
     res.status(err.status || 500).json({ success: false, error: err.message });
@@ -100,7 +130,7 @@ app.get('/api/jobs/:id', async (req, res) => {
     const job = jobs.get(req.params.id);
     if (!job) return res.status(404).json({ success: false, error: 'Job not found or expired.' });
     const provider = getProvider(job.provider);
-    const state = await provider.getTask(process.env, job.taskId);
+    const state = await provider.getTask(process.env, job.taskId, job.kind || 'image-to-3d');
     res.json({
       success: true,
       data: {
@@ -123,7 +153,7 @@ app.get('/api/jobs/:id/download', async (req, res) => {
     const job = jobs.get(req.params.id);
     if (!job) return res.status(404).json({ success: false, error: 'Job not found or expired.' });
     const provider = getProvider(job.provider);
-    const state = await provider.getTask(process.env, job.taskId);
+    const state = await provider.getTask(process.env, job.taskId, job.kind || 'image-to-3d');
     if (state.status !== 'SUCCEEDED') {
       return res.status(409).json({ success: false, error: `Model not ready (status: ${state.status}).` });
     }

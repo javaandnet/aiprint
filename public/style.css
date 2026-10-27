@@ -43,6 +43,12 @@ select, input[type="number"] {
   font-size: 14px;
 }
 .hint { color: var(--muted); font-size: 12px; margin-left: 10px; }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg { background: #0d1117; color: var(--muted); border: 0; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+.seg + .seg { border-left: 1px solid var(--line); }
+.seg.active { background: var(--accent); color: #fff; font-weight: 600; }
+#retextureRow input[type="text"] { width: 100%; background: #0d1117; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 14px; }
+#retextureRow .hint { display: block; margin: 6px 0 0; }
 .drop {
   border: 1.5px dashed var(--line);
   border-radius: 12px;

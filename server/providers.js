@@ -74,8 +74,9 @@ const meshy = {
       should_texture: options.texture !== false,
       target_formats: ['glb', 'stl', '3mf'],
       pose_mode: options.pose_mode || '',
-      image_enhancement: options.imageEnhancement !== false,
     };
+    // image_enhancement is only valid on meshy-6 / 7.1 / latest; 6-lite and smart-topology reject it.
+    if (options.aiModel !== 'meshy-6-lite') body.image_enhancement = options.imageEnhancement !== false;
     if (options.aiModel) body.ai_model = options.aiModel;
     if (options.geometryResolution) body.geometry_resolution = options.geometryResolution;
     if (options.targetPolycount) body.target_polycount = options.targetPolycount;
@@ -83,9 +84,26 @@ const meshy = {
     return { provider: 'meshy', taskId: json.result, raw: json };
   },
 
-  async getTask(cfg, taskId) {
+  // Cheap look-only iteration: re-tint / re-text an already-generated model (keeps geometry).
+  async retexture(cfg, { inputTaskId, texturePrompt, textureImageDataUri, options = {} }) {
     const key = requireKey('meshy', cfg.MESHY_API_KEY);
-    const json = await getJson(`${MESHY_BASE}/image-to-3d/${taskId}`, { Authorization: `Bearer ${key}` });
+    if (!inputTaskId) throw new Error('Retexture needs a previous successful task to reuse.');
+    const body = {
+      input_task_id: inputTaskId,
+      enable_pbr: !!options.pbr,
+    };
+    if (texturePrompt) body.text_style_prompt = texturePrompt;
+    else if (textureImageDataUri) body.image_style_url = textureImageDataUri;
+    else throw new Error('Retexture needs a style prompt or a style image.');
+    if (options.aiModel) body.ai_model = options.aiModel;
+    if (options.textureResolution) body.texture_resolution = options.textureResolution;
+    const json = await postJson(`${MESHY_BASE}/retexture`, { Authorization: `Bearer ${key}` }, body);
+    return { provider: 'meshy', taskId: json.result, raw: json };
+  },
+
+  async getTask(cfg, taskId, kind = 'image-to-3d') {
+    const key = requireKey('meshy', cfg.MESHY_API_KEY);
+    const json = await getJson(`${MESHY_BASE}/${kind}/${taskId}`, { Authorization: `Bearer ${key}` });
     const urls = json.model_urls || {};
     const models = {};
     for (const fmt of ['glb', 'obj', 'stl', '3mf', 'fbx', 'usdz']) {
