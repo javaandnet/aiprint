@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aiprint · 漫画 → 3D 手办</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>aiprint</h1>
+    <p class="sub">上传一张漫画图 → AI 生成 3D 手办 → 下载拓竹 P2S 可打印文件</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="row">
+        <label>生成引擎</label>
+        <select id="provider"></select>
+        <span id="providerHint" class="hint"></span>
+      </div>
+
+      <div class="row">
+        <label>漫画图片</label>
+        <div id="drop" class="drop">
+          <input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <p>点击或拖拽图片到此（PNG / JPG / WebP，≤20MB）</p>
+          <img id="thumb" class="thumb" alt="" hidden />
+        </div>
+      </div>
+
+      <details class="opts">
+        <summary>高级选项</summary>
+        <div class="grid">
+          <label><input type="checkbox" id="texture" checked /> 生成贴图</label>
+          <label>网格精度
+            <select id="geometry">
+              <option value="">标准</option>
+              <option value="2k">2K (Ultra +5)</option>
+              <option value="4k">4K (Ultra +5)</option>
+            </select>
+          </label>
+          <label>面数上限 <input type="number" id="polycount" placeholder="默认 30000" min="100" max="300000" /></label>
+        </div>
+      </details>
+
+      <button id="go" class="primary">生成 3D 手办</button>
+      <div id="status" class="status" hidden>
+        <div class="bar"><div id="bar"></div></div>
+        <span id="statusText">排队中…</span>
+      </div>
+      <div id="error" class="error" hidden></div>
+    </section>
+
+    <section class="panel result" id="result" hidden>
+      <h2>生成结果</h2>
+      <div id="preview" class="preview"></div>
+      <div class="downloads" id="downloads"></div>
+      <div class="cost" id="cost"></div>
+
+      <div class="tips">
+        <h3>拓竹 P2S 打印提示</h3>
+        <ul>
+          <li>打印体积 <b>256×256×256 mm</b>，下载文件后在切片时按此缩放。</li>
+          <li><b>STL / 3MF</b> 直接拖进 Bambu Studio；<b>3MF</b> 已含模型，最省事。</li>
+          <li>GLB 可在 <b>https://gltf-viewer.donmccurdy.com</b> 本地打开做 3D 预览。</li>
+          <li>AI 手办常不水密：Bambu Studio 导入后会自动修复；建议加 <b>底座 / 支撑</b>。</li>
+          <li>细胳膊、飘带等悬空易断，可切成分件打印后粘接。</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Meshy ≈ 30 credits/个（STL+3MF 原生）· Tripo ≈ $0.30/个（GLB）· 密钥写在 <code>.env</code>，不入库</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
