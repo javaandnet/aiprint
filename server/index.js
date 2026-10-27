@@ -6,7 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { getProvider, providers } from './providers.js';
-import { slice, detectOrca } from './slicer.js';
+import { slice, detectOrca, listSliceOptions } from './slicer.js';
 import { pushToPrinter } from './push.js';
 import { readStl, normalize, writeBinaryStl } from './stl.js';
 
@@ -227,7 +227,8 @@ async function downloadToBuffer(url) {
 
 // Expose whether a slicer is available so the UI can enable/disable slice buttons.
 app.get('/api/slicer', (req, res) => {
-  res.json({ success: true, data: { available: !!detectOrca(), printer: 'Bambu Lab P2S' } });
+  const available = !!detectOrca();
+  res.json({ success: true, data: { available, printer: 'Bambu Lab P2S', options: available ? listSliceOptions() : null } });
 });
 
 // Slice a finished generation into G-code or a 3MF project. Auto-scales to targetMM.

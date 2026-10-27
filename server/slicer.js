@@ -48,24 +48,86 @@ function resolveMachine(dir, printer, nozzle) {
   return pickFile(path.join(dir, 'machine'), [`${printer} ${nozzle} nozzle.json`, `${printer}.json`]);
 }
 
-// Layer profiles for the default 0.4 nozzle are named "@BBL P2S.json"; other nozzles carry the suffix.
-function resolveProcess(dir, printerTag, quality) {
+// Nozzle-specific layer profiles are named "@BBL P2S 0.6 nozzle.json"; the default 0.4
+// nozzle profiles carry no suffix ("@BBL P2S.json"). Try the nozzle-specific file first,
+// then fall back to the default (0.4) profile.
+function resolveProcess(dir, printerTag, quality, nozzle) {
   const cands = [
-    `${quality} @${printerTag} nozzle.json`, // e.g. "0.16mm High Quality @BBL P2S 0.6 nozzle.json"
-    `${quality} @${printerTag}.json`,         // e.g. "0.20mm Standard @BBL P2S.json" (0.4 default)
+    `${quality} @${printerTag} ${nozzle} nozzle.json`, // e.g. "0.16mm Balanced Quality @BBL P2S 0.6 nozzle.json"
+    `${quality} @${printerTag}.json`,                   // e.g. "0.20mm Standard @BBL P2S.json" (0.4 default)
   ];
   const f = pickFile(path.join(dir, 'process'), cands);
   if (f) return f;
-  throw new Error(`找不到切片层高预设：${quality} @${printerTag}`);
+  throw new Error(`找不到切片层高预设：${quality} @${printerTag} ${nozzle} nozzle`);
 }
 
-function resolveFilament(dir, printerTag, material) {
+function resolveFilament(dir, printerTag, material, nozzle) {
   const files = fs.readdirSync(path.join(dir, 'filament'));
   // Prefer an exact material + nozzle variant, else the default (no nozzle suffix), else any matching material.
   const bySuffix = (sfx) => files.find((n) => n.startsWith(material) && n.endsWith(sfx));
-  const pick = bySuffix(`@${printerTag} nozzle.json`) || bySuffix(`@${printerTag}.json`) || files.find((n) => n.startsWith(material));
+  const pick =
+    bySuffix(`@${printerTag} ${nozzle} nozzle.json`) ||
+    bySuffix(`@${printerTag}.json`) ||
+    files.find((n) => n.startsWith(material));
   if (!pick) throw new Error(`找不到耗材预设：${material} @${printerTag}`);
   return path.join(dir, 'filament', pick);
+}
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Scan the bundled presets and return, per nozzle, the valid layer-height profiles.
+// This keeps the UI dropdowns in sync with what the slicer can actually resolve.
+export function listSliceOptions(opts = {}) {
+  const bin = detectOrca();
+  if (!bin) return null;
+  let dir;
+  try {
+    dir = profilesRoot(bin);
+  } catch {
+    return null;
+  }
+  const printer = opts.printer || 'Bambu Lab P2S';
+  const printerTag = opts.printerTag || 'BBL P2S';
+
+  // Nozzles come from the machine profiles: "<printer> 0.4 nozzle.json".
+  const prefix = `${printer} `;
+  const nozzles = fs
+    .readdirSync(path.join(dir, 'machine'))
+    .filter((n) => n.startsWith(prefix) && n.endsWith(' nozzle.json'))
+    .map((n) => n.slice(prefix.length, n.length - ' nozzle.json'.length))
+    .sort((a, b) => Number(a) - Number(b));
+
+  // Map nozzle -> [quality], default (0.4) nozzle profiles are the suffix-less ones.
+  const DEFAULT_NOZZLE = '0.4';
+  const qualityByNozzle = Object.fromEntries(nozzles.map((nz) => [nz, []]));
+  const re = new RegExp(`^(.+) @${escapeRe(printerTag)}(?: (\\d+(?:\\.\\d+)?) nozzle)?\\.json$`);
+  for (const name of fs.readdirSync(path.join(dir, 'process'))) {
+    const m = name.match(re);
+    if (!m) continue;
+    const quality = m[1];
+    const nz = m[2] || DEFAULT_NOZZLE; // suffix-less file belongs to the default nozzle
+    if (qualityByNozzle[nz]) {
+      if (!qualityByNozzle[nz].includes(quality)) qualityByNozzle[nz].push(quality);
+    }
+  }
+  for (const nz of Object.keys(qualityByNozzle)) {
+    qualityByNozzle[nz].sort((a, b) => parseFloat(a) - parseFloat(b));
+  }
+
+  // Available materials (strip the "@..." suffix, dedupe).
+  const materials = [...new Set(fs.readdirSync(path.join(dir, 'filament')).map((n) => n.replace(/ @.*$/, '')))].sort();
+
+  return {
+    printer,
+    nozzles,
+    qualityByNozzle,
+    materials,
+    defaultNozzle: nozzles.includes(DEFAULT_NOZZLE) ? DEFAULT_NOZZLE : nozzles[0],
+    defaultQuality: '0.20mm Standard',
+    defaultMaterial: 'Bambu PLA Basic',
+  };
 }
 
 // printerId: "Bambu Lab P2S", printerTag: "BBL P2S"
@@ -95,11 +157,11 @@ export async function slice(stlPath, outDir, opts = {}) {
   const material = opts.material || 'Bambu PLA Basic';
 
   fs.mkdirSync(outDir, { recursive: true });
-  const settings = [resolveMachine(dir, printer, nozzle), resolveProcess(dir, printerTag, quality)];
+  const settings = [resolveMachine(dir, printer, nozzle), resolveProcess(dir, printerTag, quality, nozzle)];
   const args = [
     stlPath,
     '--load-settings', settings.join(';'),
-    '--load-filaments', resolveFilament(dir, printerTag, material),
+    '--load-filaments', resolveFilament(dir, printerTag, material, nozzle),
     '--assemble',
     '--outputdir', outDir,
     '--slice', '0',

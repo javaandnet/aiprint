@@ -211,6 +211,29 @@ loadProviders();
 
 // ---- slicing (OrcaSlicer) ----
 let lastSliceId = null;
+let slicerOptions = null; // nozzle/quality/material menu from /api/slicer
+
+function fillSelect(sel, items, selected) {
+  sel.innerHTML = '';
+  for (const v of items) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = v;
+    if (v === selected) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+function populateQuality(nozzle, prefer) {
+  const q = (slicerOptions?.qualityByNozzle?.[nozzle]) || [];
+  const sel = el('quality');
+  fillSelect(sel, q, prefer && q.includes(prefer) ? prefer : undefined);
+  // Default to the standard档 for the nozzle when possible.
+  if (!sel.value) {
+    const std = q.find((x) => /Standard/i.test(x)) || q[0];
+    if (std) sel.value = std;
+  }
+}
 
 async function checkSlicer() {
   try {
@@ -219,11 +242,22 @@ async function checkSlicer() {
     if (!data.available) {
       el('slicerHint').textContent = '未检测到本机 OrcaSlicer：安装后刷新页面即可自动切片（brew install --cask orcaslicer）。';
       ['sliceGcode', 'slice3mf', 'slicePush'].forEach((id) => (el(id).disabled = true));
-    } else {
-      el('slicerHint').textContent = '已检测到 ' + data.printer + ' 切片环境，可直接出 G-code / 3MF 或局域网推送。';
+      return;
+    }
+    el('slicerHint').textContent = '已检测到 ' + data.printer + ' 切片环境，可直接出 G-code / 3MF 或局域网推送。';
+    slicerOptions = data.options;
+    if (slicerOptions?.nozzles?.length) {
+      const dn = slicerOptions.defaultNozzle || '0.4';
+      fillSelect(el('nozzle'), slicerOptions.nozzles, dn);
+      // 0.2 nozzle is best-effort: OrcaSlicer headless often rejects it with "too small line width".
+      for (const o of el('nozzle').options) if (o.value === '0.2') o.textContent = '0.2（实验·可能失败）';
+      populateQuality(el('nozzle').value, slicerOptions.defaultQuality);
+      if (slicerOptions.defaultMaterial) el('material').value = slicerOptions.defaultMaterial;
     }
   } catch { /* ignore */ }
 }
+
+el('nozzle').addEventListener('change', () => populateQuality(el('nozzle').value));
 
 function setSlicing(on, text) {
   el('sliceStatus').hidden = !on;
@@ -252,7 +286,6 @@ async function doSlice(format) {
     const json = await res.json();
     if (!json.success) throw new Error(json.error);
     lastSliceId = json.data.sliceId;
-    const s = json.data.slice;
     el('sliceOut').innerHTML = '';
     const a = document.createElement('a');
     a.href = `/api/slice/${lastSliceId}/download`;
