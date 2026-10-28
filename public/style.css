@@ -110,6 +110,10 @@ button.primary:disabled { opacity: .5; cursor: not-allowed; }
 .sbtn:hover { background: #12181f; }
 .sbtn.lan { border-color: var(--ok); color: var(--ok); }
 .sbtn.ghost { border-style: dashed; opacity: .85; }
+.lantools { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.pttest { font-size: 12px; color: var(--muted); }
+.pttest.ok { color: var(--ok); }
+.pttest.err { color: #e5534b; }
 .sbtn:disabled { opacity: .45; cursor: not-allowed; }
 .lanform { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .lanform label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }

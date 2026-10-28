@@ -33,6 +33,75 @@ function tlsOptions() {
   return { rejectUnauthorized: false, insecure: true };
 }
 
+// Probe the printer over MQTT: connect (validates TLS + LAN access code), request a
+// status/version report, and read back model + the physically installed nozzle(s).
+export async function testPrinterConnection({ ip, accessCode, serial, onLog, timeoutMs = 12000 }) {
+  const { mqtt } = await loadDeps();
+  const log = onLog || (() => {});
+  if (!ip || !accessCode || !serial) throw new Error('连接测试需要打印机 IP、Access Code 和序列号。');
+  const tls = tlsOptions();
+  if (tls.insecure) log('警告：未设置 BAMBU_CA_FILE，LAN TLS 采用首次信任模式，请仅在可信本地网络使用。');
+
+  const id = deviceIdFromSerial(serial);
+  log(`连接 mqtts://${ip}:8883 (设备 ${id}) ...`);
+  let client;
+  try {
+    client = await mqtt.connectAsync(`mqtts://${ip}:8883`, {
+      username: 'bblp',
+      password: accessCode,
+      clientId: `conntest_${Math.floor(Math.random() * 100000)}`,
+      rejectUnauthorized: tls.rejectUnauthorized,
+      ca: tls.ca,
+      reconnectPeriod: 0,
+      connectTimeout: 15000,
+    });
+  } catch (err) {
+    const m = String(err.message || err);
+    if (/auth|not authorized|bad user|connack/i.test(m)) throw new Error(`无法连接：IP ${ip} 无响应或 Access Code 不对（确认打印机已开局域网控制、与电脑同网段）。原始：${m}`);
+    throw new Error(`无法连接 ${ip}:8883（确认 IP、打印机已开机、已开局域网控制、与电脑同网段）。原始：${m}`);
+  }
+
+  try {
+    const topic = `device/${id}/printer`;
+    const reportTopic = `device/${id}/report`;
+    const t = () => new Date().toISOString().replace('T', ' ').substring(0, 19) + '+08:00';
+    const seq = () => Date.now();
+
+    const info = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('连接超时：打印机未在局域网上报状态（检查 IP/是否开机/同网段/已开局域网控制）')), timeoutMs);
+      client.on('error', (e) => { clearTimeout(timer); reject(e); });
+      client.subscribe(reportTopic, (err) => {
+        if (err) { clearTimeout(timer); reject(err); return; }
+        client.publish(topic, JSON.stringify({ info: { command: 'get_version', time: t(), sequence_id: seq() } }));
+        client.publish(topic, JSON.stringify({ print: { command: 'pushall', version: 1, sequence_id: seq() } }));
+      });
+      client.on('message', (_topic, payload) => {
+        let msg;
+        try { msg = JSON.parse(payload.toString()); } catch { return; }
+        const p = msg.print || msg.info || msg.tls;
+        if (!p || (!p.mc_type && !p.nozzle_diameter && !msg.mtu)) return;
+        clearTimeout(timer);
+        const upgrade = msg.upgrade || {};
+        resolve({
+          name: (msg.mtu && msg.mtu.name) || undefined,
+          ip: (msg.mtu && msg.mtu.ip) || ip,
+          state: (msg.mtu && msg.mtu.state) || p.active_state || undefined,
+          mc_type: p.mc_type || undefined,
+          nozzle_diameters: Array.isArray(p.nozzle_diameter) ? p.nozzle_diameter : (p.nozzle_diameter != null ? [p.nozzle_diameter] : []),
+          nozzle_types: Array.isArray(p.nozzle_type) ? p.nozzle_type : (p.nozzle_type ? [p.nozzle_type] : []),
+          series: upgrade.series || upgrade.mc_result?.series || undefined,
+          ver: upgrade.firmwares?.[0]?.ver || undefined,
+        });
+      });
+    });
+
+    log(`在线：${info.mc_type || info.name || 'Bambu'} 喷头 ${(info.nozzle_diameters || []).join('/') || '未知'}mm`);
+    return { connected: true, deviceId: id, printer: info };
+  } finally {
+    setTimeout(() => client.end(true), 500);
+  }
+}
+
 export async function pushToPrinter({ ip, accessCode, serial, gcodePath, filename, autoStart = true, onLog }) {
   const { mqtt, Client } = await loadDeps();
   const log = onLog || (() => {});

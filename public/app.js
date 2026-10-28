@@ -340,7 +340,7 @@ el('stlFile').addEventListener('change', (e) => { const f = e.target.files[0]; i
 
 el('slicePush').addEventListener('click', async () => {
   // First click reveals the LAN form; if already shown, run push.
-  if (el('lanForm').hidden) { el('lanForm').hidden = false; el('slicePush').textContent = '确认推送到 P2S'; return; }
+  if (el('lanForm').hidden) { el('lanForm').hidden = false; el('lanTools').hidden = false; el('slicePush').textContent = '确认推送到 P2S'; return; }
   const ip = el('lanIp').value.trim();
   const accessCode = el('lanCode').value.trim();
   const serial = el('lanSerial').value.trim();
@@ -371,3 +371,49 @@ el('slicePush').addEventListener('click', async () => {
 });
 
 checkSlicer();
+
+// --- Printer connection test + sync the slice nozzle to the physically installed head ---
+let detectedNozzle = null;
+
+el('testConn').addEventListener('click', async () => {
+  const ip = el('lanIp').value.trim();
+  const accessCode = el('lanCode').value.trim();
+  const serial = el('lanSerial').value.trim();
+  const out = el('printerTest');
+  if (!ip || !accessCode || !serial) { out.textContent = '请先填 IP / Access Code / 序列号'; out.className = 'pttest err'; return; }
+  out.textContent = '连接中…'; out.className = 'pttest';
+  el('testConn').disabled = true; el('syncNozzle').hidden = true;
+  try {
+    const res = await fetch('/api/printer/test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip, accessCode, serial }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error);
+    const p = json.data.printer || {};
+    const noz = (p.nozzle_diameters || []).map((n) => String(n));
+    detectedNozzle = noz[0] || null;
+    const model = p.mc_type || p.series || p.name || 'Bambu';
+    let line = `✅ 已连接：${model}`;
+    if (noz.length) line += ` · 实际喷头 ${noz.join('/')}mm`;
+    if (p.state) line += ` · 状态 ${p.state}`;
+    out.textContent = line; out.className = 'pttest ok';
+    // Offer to align the slice nozzle with the installed head when it differs and is available.
+    const opts = Array.from(el('nozzle').options).map((o) => o.value);
+    if (detectedNozzle && opts.includes(detectedNozzle) && detectedNozzle !== el('nozzle').value) {
+      el('syncNozzle').hidden = false;
+    }
+  } catch (err) {
+    out.textContent = '❌ ' + err.message; out.className = 'pttest err';
+  } finally {
+    el('testConn').disabled = false;
+  }
+});
+
+el('syncNozzle').addEventListener('click', () => {
+  if (!detectedNozzle) return;
+  el('nozzle').value = detectedNozzle;
+  populateQuality(detectedNozzle, slicerOptions?.defaultQuality);
+  el('syncNozzle').hidden = true;
+  el('printerTest').textContent += ` · 已把切片喷嘴同步为 ${detectedNozzle}mm`;
+});

@@ -105,6 +105,11 @@
         <label>Access Code<input type="password" id="lanCode" placeholder="局域网访问码(20位)" /></label>
         <label>序列号<input type="text" id="lanSerial" placeholder="设备序列号" /></label>
       </div>
+      <div class="lantools" id="lanTools" hidden>
+        <button type="button" class="sbtn" id="testConn">测试连接</button>
+        <button type="button" class="sbtn ghost" id="syncNozzle" hidden>同步为实际喷头</button>
+        <span class="pttest" id="printerTest"></span>
+      </div>
       <div class="slicestatus" id="sliceStatus" hidden><span id="sliceStatusText"></span><div class="bar"><div id="sliceBar"></div></div></div>
       <div class="sliceout" id="sliceOut"></div>
       <p class="hint" id="slicerHint"></p>

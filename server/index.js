@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { getProvider, providers } from './providers.js';
 import { slice, detectOrca, listSliceOptions } from './slicer.js';
-import { pushToPrinter } from './push.js';
+import { pushToPrinter, testPrinterConnection } from './push.js';
 import { readStl, normalize, writeBinaryStl } from './stl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -325,6 +325,19 @@ app.get('/api/slice/:id/download', (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${s.filename}"`);
   res.setHeader('Content-Type', s.format === '3mf' ? 'model/3mf' : 'text/plain');
   fs.createReadStream(s.path).pipe(res);
+});
+
+// Test the LAN connection to the printer: validate access code + read back model and installed nozzle(s).
+app.post('/api/printer/test', express.json(), async (req, res) => {
+  try {
+    const { ip, accessCode, serial } = req.body || {};
+    const logs = [];
+    const result = await testPrinterConnection({ ip, accessCode, serial, onLog: (m) => logs.push(m) });
+    res.json({ success: true, data: { ...result, logs } });
+  } catch (err) {
+    console.error('[aiprint] printer test failed:', err.message);
+    res.status(502).json({ success: false, error: err.message });
+  }
 });
 
 // Push a sliced G-code directly to the P2S over the LAN (experimental).
