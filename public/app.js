@@ -175,7 +175,7 @@ function renderResult(d, mode) {
 
   // remember the successful model so 换皮 can reuse it (retexture output is itself reusable too)
   lastSuccess = { jobId: d.jobId, provider: d.provider };
-  el('slicePanel').hidden = false;
+  el('sliceSection').hidden = false;
   el('sliceOut').innerHTML = '';
 
   const preview = el('preview');
@@ -236,12 +236,13 @@ function populateQuality(nozzle, prefer) {
 }
 
 async function checkSlicer() {
+  el('sliceSection').hidden = false; // slice/print panel is standalone; visible even without a generated model
   try {
     const res = await fetch('/api/slicer');
     const { data } = await res.json();
     if (!data.available) {
       el('slicerHint').textContent = '未检测到本机 OrcaSlicer：安装后刷新页面即可自动切片（brew install --cask orcaslicer）。';
-      ['sliceGcode', 'slice3mf', 'slicePush'].forEach((id) => (el(id).disabled = true));
+      ['sliceGcode', 'slice3mf', 'slicePush', 'sliceUpload'].forEach((id) => (el(id).disabled = true));
       return;
     }
     el('slicerHint').textContent = '已检测到 ' + data.printer + ' 切片环境，可直接出 G-code / 3MF 或局域网推送。';
@@ -303,6 +304,39 @@ async function doSlice(format) {
 
 el('sliceGcode').addEventListener('click', () => doSlice('gcode'));
 el('slice3mf').addEventListener('click', () => doSlice('3mf'));
+
+// Upload a local STL/OBJ and slice it (no AI job needed) — enables offline slice + push testing.
+async function uploadAndSlice(file) {
+  setSlicing(true, '上传并切片中（OrcaSlicer）…');
+  el('sliceOut').innerHTML = '';
+  const fd = new FormData();
+  fd.append('model', file);
+  fd.append('format', 'gcode');
+  fd.append('targetMM', Number(el('sizeMM').value) || 60);
+  fd.append('nozzle', el('nozzle').value);
+  fd.append('quality', el('quality').value);
+  fd.append('material', el('material').value);
+  try {
+    const res = await fetch('/api/slice-upload', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error);
+    lastSliceId = json.data.sliceId;
+    el('sliceOut').innerHTML = '';
+    const a = document.createElement('a');
+    a.href = `/api/slice/${lastSliceId}/download`;
+    a.textContent = '下载 ' + json.data.filename;
+    a.setAttribute('download', '');
+    el('sliceOut').appendChild(a);
+    el('sliceOut').append('（已切片完成，可直接点「切片→推送到 P2S」）');
+  } catch (err) {
+    showError('上传切片失败：' + err.message);
+  } finally {
+    setSlicing(false);
+  }
+}
+
+el('sliceUpload').addEventListener('click', () => el('stlFile').click());
+el('stlFile').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) uploadAndSlice(f); });
 
 el('slicePush').addEventListener('click', async () => {
   // First click reveals the LAN form; if already shown, run push.

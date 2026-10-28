@@ -73,29 +73,6 @@
       <div class="downloads" id="downloads"></div>
       <div class="cost" id="cost"></div>
 
-      <div class="slice" id="slicePanel" hidden>
-        <h3>切片 · OrcaSlicer 自动（拓竹 P2S）</h3>
-        <div class="grid2">
-          <label>手办高度(mm)<input type="number" id="sizeMM" value="60" min="20" max="250" /></label>
-          <label>喷嘴<select id="nozzle"></select></label>
-          <label>层高/质量<select id="quality"></select></label>
-          <label>耗材<input type="text" id="material" value="Bambu PLA Basic" /></label>
-        </div>
-        <div class="slicebtns">
-          <button type="button" class="sbtn" id="sliceGcode">切片→G-code</button>
-          <button type="button" class="sbtn" id="slice3mf">切片→3MF</button>
-          <button type="button" class="sbtn lan" id="slicePush">切片→推送到 P2S</button>
-        </div>
-        <div class="lanform" id="lanForm" hidden>
-          <label>打印机 IP<input type="text" id="lanIp" placeholder="192.168.x.x" /></label>
-          <label>Access Code<input type="password" id="lanCode" placeholder="局域网访问码(20位)" /></label>
-          <label>序列号<input type="text" id="lanSerial" placeholder="设备序列号" /></label>
-        </div>
-        <div class="slicestatus" id="sliceStatus" hidden><span id="sliceStatusText"></span><div class="bar"><div id="sliceBar"></div></div></div>
-        <div class="sliceout" id="sliceOut"></div>
-        <p class="hint" id="slicerHint"></p>
-      </div>
-
       <div class="tips">
         <h3>拓竹 P2S 打印提示</h3>
         <ul>
@@ -105,6 +82,32 @@
           <li>细胳膊、飘带等悬空易断，可切成分件打印后粘接。</li>
         </ul>
       </div>
+    </section>
+
+    <section class="panel slice" id="sliceSection" hidden>
+      <h2>切片 · OrcaSlicer 自动（拓竹 P2S）</h2>
+      <div class="grid2">
+        <label>手办高度(mm)<input type="number" id="sizeMM" value="60" min="20" max="250" /></label>
+        <label>喷嘴<select id="nozzle"></select></label>
+        <label>层高/质量<select id="quality"></select></label>
+        <label>耗材<input type="text" id="material" value="Bambu PLA Basic" /></label>
+      </div>
+      <div class="slicebtns">
+        <button type="button" class="sbtn" id="sliceGcode">切片→G-code</button>
+        <button type="button" class="sbtn" id="slice3mf">切片→3MF</button>
+        <button type="button" class="sbtn lan" id="slicePush">切片→推送到 P2S</button>
+        <button type="button" class="sbtn ghost" id="sliceUpload">上传 STL/OBJ 切片</button>
+        <input type="file" id="stlFile" accept=".stl,.obj" hidden />
+      </div>
+      <p class="hint">「切片→G-code/3MF」切的是上一次生成成功的模型；没生成模型时，用「上传 STL/OBJ 切片」直接切本地文件（可离线测试推送）。</p>
+      <div class="lanform" id="lanForm" hidden>
+        <label>打印机 IP<input type="text" id="lanIp" placeholder="192.168.x.x" /></label>
+        <label>Access Code<input type="password" id="lanCode" placeholder="局域网访问码(20位)" /></label>
+        <label>序列号<input type="text" id="lanSerial" placeholder="设备序列号" /></label>
+      </div>
+      <div class="slicestatus" id="sliceStatus" hidden><span id="sliceStatusText"></span><div class="bar"><div id="sliceBar"></div></div></div>
+      <div class="sliceout" id="sliceOut"></div>
+      <p class="hint" id="slicerHint"></p>
     </section>
   </main>
 

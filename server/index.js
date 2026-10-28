@@ -276,6 +276,48 @@ app.post('/api/slice', express.json(), async (req, res) => {
   }
 });
 
+// Slice an uploaded STL/OBJ directly (no AI job needed) — lets the slice+push chain be tested offline.
+app.post('/api/slice-upload', upload.single('model'), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) return res.status(400).json({ success: false, error: '未收到模型文件。' });
+    if (!detectOrca()) return res.status(503).json({ success: false, error: '未找到 OrcaSlicer，无法切片。' });
+    const b = req.body || {};
+    const format = b.format || 'gcode';
+    const targetMM = Number(b.targetMM) || 60;
+    const nozzle = b.nozzle || '0.4';
+    const quality = b.quality || '0.20mm Standard';
+    const material = b.material || 'Bambu PLA Basic';
+    const orig = String(req.file.originalname || 'model').toLowerCase();
+    const isStl = orig.endsWith('.stl');
+    const jobId = newId();
+    const dir = path.join(outputDir, jobId);
+    fs.mkdirSync(dir, { recursive: true });
+
+    let modelPath;
+    if (isStl) {
+      const scaled = normalize(readStl(req.file.buffer), { targetMM, axis: 2 });
+      modelPath = path.join(dir, 'model_scaled.stl');
+      fs.writeFileSync(modelPath, writeBinaryStl(scaled.tris));
+    } else {
+      modelPath = path.join(dir, orig.endsWith('.obj') ? 'model.obj' : 'model.stl');
+      fs.writeFileSync(modelPath, req.file.buffer);
+    }
+
+    const out = await slice(modelPath, dir, { format, nozzle, quality, material });
+    const ext = format === '3mf' ? '3mf' : 'gcode';
+    const filename = `aiprint-${jobId}.${ext}`;
+    const finalPath = path.join(dir, filename);
+    if (out.output !== finalPath) fs.renameSync(out.output, finalPath);
+    const id = newId();
+    slices.set(id, { id, path: finalPath, filename, format: ext, jobId, slice: out.slice, createdAt: Date.now() });
+    console.log(`[aiprint] uploaded slice ${jobId} (${orig}, ${targetMM}mm) -> ${filename}`);
+    res.json({ success: true, data: { sliceId: id, format: ext, filename, slice: out.slice, scaled: isStl } });
+  } catch (err) {
+    console.error('[aiprint] upload slice failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Download a sliced artifact.
 app.get('/api/slice/:id/download', (req, res) => {
   const s = slices.get(req.params.id);
