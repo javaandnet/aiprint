@@ -116,8 +116,9 @@ export function listSliceOptions(opts = {}) {
     qualityByNozzle[nz].sort((a, b) => parseFloat(a) - parseFloat(b));
   }
 
-  // Available materials (strip the "@..." suffix, dedupe).
-  const materials = [...new Set(fs.readdirSync(path.join(dir, 'filament')).map((n) => n.replace(/ @.*$/, '')))].sort();
+  // Available materials (strip the "@..." suffix, dedupe, drop base templates / stray files).
+  const rawMaterials = fs.readdirSync(path.join(dir, 'filament')).map((n) => n.replace(/ @.*$/, ''));
+  const materials = [...new Set(rawMaterials)].filter((n) => n && !n.endsWith('.json') && !n.startsWith('fdm_') && n !== 'filaments_color_codes').sort();
 
   return {
     printer,
@@ -154,14 +155,22 @@ export async function slice(stlPath, outDir, opts = {}) {
   const printerTag = opts.printerTag || 'BBL P2S';
   const nozzle = opts.nozzle || '0.4';
   const quality = opts.quality || '0.20mm Standard';
-  const material = opts.material || 'Bambu PLA Basic';
+
+  // AMS has 4 tray slots. `materials` is the per-slot list (up to 4 names, blanks = empty tray).
+  // `activeMaterial` (or legacy `material`) is the filament the model actually prints with.
+  const slots = (Array.isArray(opts.materials) ? opts.materials : []).map((m) => String(m || '').trim()).filter(Boolean);
+  const active = String(opts.activeMaterial || opts.material || slots[0] || 'Bambu PLA Basic').trim();
+  // G-code (real print): load only the active filament so the plate stays single-material.
+  // 3MF project: carry the chosen filament first, then the other loaded slots, for AMS mapping.
+  const filamentNames = opts.format === '3mf' ? [active, ...slots.filter((m) => m !== active)] : [active];
+  const filamentFiles = [...new Set(filamentNames)].map((m) => resolveFilament(dir, printerTag, m, nozzle));
 
   fs.mkdirSync(outDir, { recursive: true });
   const settings = [resolveMachine(dir, printer, nozzle), resolveProcess(dir, printerTag, quality, nozzle)];
   const args = [
     stlPath,
     '--load-settings', settings.join(';'),
-    '--load-filaments', resolveFilament(dir, printerTag, material, nozzle),
+    '--load-filaments', filamentFiles.join(';'),
     '--assemble',
     '--outputdir', outDir,
     '--slice', '0',
@@ -172,7 +181,7 @@ export async function slice(stlPath, outDir, opts = {}) {
   }
   await run(bin, args, outDir);
 
-  const result = { dir: outDir, slice: { printer, nozzle, quality, material } };
+  const result = { dir: outDir, slice: { printer, nozzle, quality, material: active, slots } };
   if (opts.format === '3mf') {
     result.output = path.join(outDir, 'aiprint.3mf');
   } else {

@@ -263,7 +263,7 @@ app.post('/api/printer/config', express.json(), (req, res) => {
 // Slice a finished generation into G-code or a 3MF project. Auto-scales to targetMM.
 app.post('/api/slice', express.json(), async (req, res) => {
   try {
-    const { jobId, format = 'gcode', targetMM = 60, nozzle = '0.4', quality = '0.20mm Standard', material = 'Bambu PLA Basic' } = req.body || {};
+    const { jobId, format = 'gcode', targetMM = 60, nozzle = '0.4', quality = '0.20mm Standard', material = 'Bambu PLA Basic', materials = [], activeMaterial } = req.body || {};
     const job = jobs.get(jobId);
     if (!job) return res.status(404).json({ success: false, error: 'Job not found or expired.' });
     if (!detectOrca()) return res.status(503).json({ success: false, error: '未找到 OrcaSlicer，无法切片。' });
@@ -289,7 +289,7 @@ app.post('/api/slice', express.json(), async (req, res) => {
       fs.writeFileSync(modelPath, writeBinaryStl(scaled.tris));
     }
 
-    const out = await slice(modelPath, dir, { format, nozzle, quality, material });
+    const out = await slice(modelPath, dir, { format, nozzle, quality, material, materials, activeMaterial });
     const ext = format === '3mf' ? '3mf' : 'gcode';
     const filename = `aiprint-${jobId}.${ext}`;
     const finalPath = path.join(dir, filename);
@@ -316,6 +316,8 @@ app.post('/api/slice-upload', upload.single('model'), async (req, res) => {
     const nozzle = b.nozzle || '0.4';
     const quality = b.quality || '0.20mm Standard';
     const material = b.material || 'Bambu PLA Basic';
+    const materials = Array.isArray(b.materials) ? b.materials : [];
+    const activeMaterial = b.activeMaterial;
     const orig = String(req.file.originalname || 'model').toLowerCase();
     const isStl = orig.endsWith('.stl');
     const jobId = newId();
@@ -332,7 +334,7 @@ app.post('/api/slice-upload', upload.single('model'), async (req, res) => {
       fs.writeFileSync(modelPath, req.file.buffer);
     }
 
-    const out = await slice(modelPath, dir, { format, nozzle, quality, material });
+    const out = await slice(modelPath, dir, { format, nozzle, quality, material, materials, activeMaterial });
     const ext = format === '3mf' ? '3mf' : 'gcode';
     const filename = `aiprint-${jobId}.${ext}`;
     const finalPath = path.join(dir, filename);

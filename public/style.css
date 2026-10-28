@@ -115,6 +115,11 @@ button.primary:disabled { opacity: .5; cursor: not-allowed; }
 .pttest.ok { color: var(--ok); }
 .pttest.err { color: #e5534b; }
 .sbtn:disabled { opacity: .45; cursor: not-allowed; }
+.filaments { margin: 4px 0 12px; }
+.filhead { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.filgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.filgrid label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.filgrid select { background: #0d1117; color: var(--fg); border: 1px solid #2a2f3a; border-radius: 8px; padding: 7px 8px; font-size: 12px; }
 .lanform { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .lanform label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
 .lanform input { background: #0d1117; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px; }

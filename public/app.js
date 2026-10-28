@@ -224,6 +224,23 @@ function fillSelect(sel, items, selected) {
   }
 }
 
+const EMPTY_MAT = '(未装)';
+function populateFilaments() {
+  const mats = slicerOptions?.materials || [];
+  const def = slicerOptions?.defaultMaterial || 'Bambu PLA Basic';
+  const opts = [EMPTY_MAT, ...mats];
+  fillSelect(el('mat1'), opts, mats.includes(def) ? def : EMPTY_MAT);
+  fillSelect(el('mat2'), opts, EMPTY_MAT);
+  fillSelect(el('mat3'), opts, EMPTY_MAT);
+  fillSelect(el('mat4'), opts, EMPTY_MAT);
+}
+// Map an unselected tray back to '' so the backend treats it as an empty AMS slot.
+function collectFilaments() {
+  const raw = [el('mat1').value, el('mat2').value, el('mat3').value, el('mat4').value].map((v) => (v === EMPTY_MAT ? '' : v));
+  const activeMaterial = raw[Number(el('matActive').value) - 1] || '';
+  return { materials: raw, activeMaterial };
+}
+
 function populateQuality(nozzle, prefer) {
   const q = (slicerOptions?.qualityByNozzle?.[nozzle]) || [];
   const sel = el('quality');
@@ -253,7 +270,7 @@ async function checkSlicer() {
       // 0.2 nozzle is best-effort: OrcaSlicer headless often rejects it with "too small line width".
       for (const o of el('nozzle').options) if (o.value === '0.2') o.textContent = '0.2（实验·可能失败）';
       populateQuality(el('nozzle').value, slicerOptions.defaultQuality);
-      if (slicerOptions.defaultMaterial) el('material').value = slicerOptions.defaultMaterial;
+      populateFilaments();
     }
   } catch { /* ignore */ }
 }
@@ -269,6 +286,8 @@ function setSlicing(on, text) {
 
 async function doSlice(format) {
   if (!lastSuccess) { el('sliceOut').textContent = '请先生成一个模型。'; return; }
+  const fil = collectFilaments();
+  if (!fil.activeMaterial) { showError('所选“打印用料”对应的料槽未选线材，请先在槽里选一种。'); return; }
   setSlicing(true, format === '3mf' ? '切片为 3MF 中（OrcaSlicer，十几秒到几分钟）…' : '切片为 G-code 中（OrcaSlicer，十几秒到几分钟）…');
   el('sliceOut').innerHTML = '';
   try {
@@ -281,7 +300,8 @@ async function doSlice(format) {
         targetMM: Number(el('sizeMM').value) || 60,
         nozzle: el('nozzle').value,
         quality: el('quality').value,
-        material: el('material').value,
+        materials: fil.materials,
+        activeMaterial: fil.activeMaterial,
       }),
     });
     const json = await res.json();
@@ -307,6 +327,8 @@ el('slice3mf').addEventListener('click', () => doSlice('3mf'));
 
 // Upload a local STL/OBJ and slice it (no AI job needed) — enables offline slice + push testing.
 async function uploadAndSlice(file) {
+  const fil = collectFilaments();
+  if (!fil.activeMaterial) { showError('所选“打印用料”对应的料槽未选线材，请先在槽里选一种。'); return; }
   setSlicing(true, '上传并切片中（OrcaSlicer）…');
   el('sliceOut').innerHTML = '';
   const fd = new FormData();
@@ -315,7 +337,8 @@ async function uploadAndSlice(file) {
   fd.append('targetMM', Number(el('sizeMM').value) || 60);
   fd.append('nozzle', el('nozzle').value);
   fd.append('quality', el('quality').value);
-  fd.append('material', el('material').value);
+  fil.materials.forEach((m) => fd.append('materials', m));
+  fd.append('activeMaterial', fil.activeMaterial);
   try {
     const res = await fetch('/api/slice-upload', { method: 'POST', body: fd });
     const json = await res.json();

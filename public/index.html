@@ -90,7 +90,18 @@
         <label>手办高度(mm)<input type="number" id="sizeMM" value="60" min="20" max="250" /></label>
         <label>喷嘴<select id="nozzle"></select></label>
         <label>层高/质量<select id="quality"></select></label>
-        <label>耗材<input type="text" id="material" value="Bambu PLA Basic" /></label>
+        <label>打印用料<select id="matActive">
+          <option value="1">料槽1</option><option value="2">料槽2</option><option value="3">料槽3</option><option value="4">料槽4</option>
+        </select></label>
+      </div>
+      <div class="filaments">
+        <div class="filhead">AMS 料槽（4 根线材，选一个作为打印用料）</div>
+        <div class="filgrid">
+          <label>槽1<select id="mat1"></select></label>
+          <label>槽2<select id="mat2"></select></label>
+          <label>槽3<select id="mat3"></select></label>
+          <label>槽4<select id="mat4"></select></label>
+        </div>
       </div>
       <div class="slicebtns">
         <button type="button" class="sbtn" id="sliceGcode">切片→G-code</button>
