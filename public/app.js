@@ -393,7 +393,7 @@ el('testConn').addEventListener('click', async () => {
     const p = json.data.printer || {};
     const noz = (p.nozzle_diameters || []).map((n) => String(n));
     detectedNozzle = noz[0] || null;
-    const model = p.mc_type || p.series || p.name || 'Bambu';
+    const model = p.mc_type || p.series || p.name || '拓竹打印机';
     let line = `✅ 已连接：${model}`;
     if (noz.length) line += ` · 实际喷头 ${noz.join('/')}mm`;
     if (p.state) line += ` · 状态 ${p.state}`;

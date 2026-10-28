@@ -16,11 +16,12 @@ async function loadDeps() {
   return { mqtt: mqttMod.default || mqttMod, Client: ftpMod.FTP, FTPError: ftpMod.FTPError };
 }
 
-// Bambu device id = last 12 chars of the printer serial number.
+// Bambu MQTT topics are keyed by the FULL device serial number, e.g. device/22E8AJ650500248/report.
+// (The community "last 12 chars" rule does not hold for P2S/X/P1-series LAN reporting.)
 export function deviceIdFromSerial(serial) {
   const s = String(serial || '').trim();
-  if (s.length >= 12) return s.slice(-12);
-  throw new Error('打印机序列号无效（应至少 12 位）');
+  if (s.length >= 8) return s;
+  throw new Error('打印机序列号无效（应至少 8 位）');
 }
 
 // Bambu uses a self-signed device cert. Verify against a real CA when BAMBU_CA_FILE is set;
@@ -68,34 +69,52 @@ export async function testPrinterConnection({ ip, accessCode, serial, onLog, tim
     const seq = () => Date.now();
 
     const info = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('连接超时：打印机未在局域网上报状态（检查 IP/是否开机/同网段/已开局域网控制）')), timeoutMs);
-      client.on('error', (e) => { clearTimeout(timer); reject(e); });
+      let settled = false;
+      let sawStatus = false;
+      const facts = {};
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        ok ? resolve(facts) : reject(new Error('连接超时：已连上但未解析到喷头/型号信息（请重试）'));
+      };
+      const timer = setTimeout(() => {
+        // Reachable and reported at least once -> succeed with whatever we captured; only hard-fail if nothing came.
+        if (sawStatus) done(true);
+        else if (!settled) { settled = true; reject(new Error('连接超时：打印机未在局域网上报状态（检查 IP/是否开机/同网段/已开局域网控制）')); }
+      }, timeoutMs);
+      client.on('error', (e) => { if (!settled) { settled = true; clearTimeout(timer); reject(e); } });
       client.subscribe(reportTopic, (err) => {
-        if (err) { clearTimeout(timer); reject(err); return; }
+        if (err) { if (!settled) { settled = true; clearTimeout(timer); reject(err); } return; }
         client.publish(topic, JSON.stringify({ info: { command: 'get_version', time: t(), sequence_id: seq() } }));
         client.publish(topic, JSON.stringify({ print: { command: 'pushall', version: 1, sequence_id: seq() } }));
       });
       client.on('message', (_topic, payload) => {
         let msg;
         try { msg = JSON.parse(payload.toString()); } catch { return; }
-        const p = msg.print || msg.info || msg.tls;
-        if (!p || (!p.mc_type && !p.nozzle_diameter && !msg.mtu)) return;
-        clearTimeout(timer);
-        const upgrade = msg.upgrade || {};
-        resolve({
-          name: (msg.mtu && msg.mtu.name) || undefined,
-          ip: (msg.mtu && msg.mtu.ip) || ip,
-          state: (msg.mtu && msg.mtu.state) || p.active_state || undefined,
-          mc_type: p.mc_type || undefined,
-          nozzle_diameters: Array.isArray(p.nozzle_diameter) ? p.nozzle_diameter : (p.nozzle_diameter != null ? [p.nozzle_diameter] : []),
-          nozzle_types: Array.isArray(p.nozzle_type) ? p.nozzle_type : (p.nozzle_type ? [p.nozzle_type] : []),
-          series: upgrade.series || upgrade.mc_result?.series || undefined,
-          ver: upgrade.firmwares?.[0]?.ver || undefined,
-        });
+        const pr = msg.print;
+        if (!pr && !msg.mtu) return;
+        sawStatus = true;
+        if (msg.mtu) { facts.name = msg.mtu.name || facts.name; facts.state = msg.mtu.state || facts.state; }
+        if (pr) {
+          if (pr.mc_type) facts.mc_type = pr.mc_type;
+          if (pr.nozzle_diameter != null) {
+            facts.nozzle_diameters = (Array.isArray(pr.nozzle_diameter) ? pr.nozzle_diameter : [pr.nozzle_diameter]).map((v) => String(v));
+          } else if (Array.isArray(pr.device?.nozzle?.info)) {
+            facts.nozzle_diameters = pr.device.nozzle.info.map((n) => String(n.diameter));
+          }
+          if (pr.nozzle_type) facts.nozzle_types = (Array.isArray(pr.nozzle_type) ? pr.nozzle_type : [pr.nozzle_type]).map((v) => String(v));
+          if (pr.upgrade_state?.status) facts.state = pr.upgrade_state.status;
+          if (pr.sn) facts.sn = pr.sn;
+          if (pr.ver) facts.firmware = pr.ver;
+        }
+        // Resolve as soon as we have the installed-nozzle info (the key thing the UI needs).
+        if (facts.nozzle_diameters?.length) done(true);
       });
     });
 
-    log(`在线：${info.mc_type || info.name || 'Bambu'} 喷头 ${(info.nozzle_diameters || []).join('/') || '未知'}mm`);
+    info.ip = info.ip || ip;
+    log(`在线：${info.mc_type || info.name || 'Bambu 打印机'} 喷头 ${(info.nozzle_diameters || []).join('/') || '未知'}mm${info.state ? ` · ${info.state}` : ''}`);
     return { connected: true, deviceId: id, printer: info };
   } finally {
     setTimeout(() => client.end(true), 500);
