@@ -7,3 +7,6 @@ output/
 # local API keys (never commit)
 key/
 *.key
+
+# saved printer LAN profile (holds access code; never commit)
+printer.json

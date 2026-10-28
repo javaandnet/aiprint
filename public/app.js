@@ -370,7 +370,7 @@ el('slicePush').addEventListener('click', async () => {
   }
 });
 
-checkSlicer();
+checkSlicer().then(() => loadPrinterConfig());
 
 // --- Printer connection test + sync the slice nozzle to the physically installed head ---
 let detectedNozzle = null;
@@ -397,7 +397,7 @@ el('testConn').addEventListener('click', async () => {
     let line = `✅ 已连接：${model}`;
     if (noz.length) line += ` · 实际喷头 ${noz.join('/')}mm`;
     if (p.state) line += ` · 状态 ${p.state}`;
-    out.textContent = line; out.className = 'pttest ok';
+    out.textContent = line + ' · ✅ 已保存本次连接'; out.className = 'pttest ok';
     // Offer to align the slice nozzle with the installed head when it differs and is available.
     const opts = Array.from(el('nozzle').options).map((o) => o.value);
     if (detectedNozzle && opts.includes(detectedNozzle) && detectedNozzle !== el('nozzle').value) {
@@ -417,3 +417,23 @@ el('syncNozzle').addEventListener('click', () => {
   el('syncNozzle').hidden = true;
   el('printerTest').textContent += ` · 已把切片喷嘴同步为 ${detectedNozzle}mm`;
 });
+
+// Prefill the LAN form from the saved printer.json so a known printer is one click away.
+async function loadPrinterConfig() {
+  try {
+    const res = await fetch('/api/printer/config');
+    const { data } = await res.json();
+    if (!data || !data.ip) return;
+    el('lanIp').value = data.ip || '';
+    el('lanCode').value = data.accessCode || '';
+    el('lanSerial').value = data.serial || '';
+    if (data.nozzle && Array.from(el('nozzle').options).some((o) => o.value === data.nozzle)) {
+      detectedNozzle = data.nozzle;
+      el('nozzle').value = data.nozzle;
+      populateQuality(data.nozzle, slicerOptions?.defaultQuality);
+    }
+    const s = el('printerTest');
+    if (s && !s.textContent) { s.textContent = `已载入上次保存的打印机 ${data.ip}` + (data.nozzle ? ` · 喷头 ${data.nozzle}mm` : ''); s.className = 'pttest'; }
+  } catch { /* ignore */ }
+}
+// startup load is chained after checkSlicer() so the nozzle menu is populated first

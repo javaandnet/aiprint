@@ -231,6 +231,35 @@ app.get('/api/slicer', (req, res) => {
   res.json({ success: true, data: { available, printer: 'Bambu Lab P2S', options: available ? listSliceOptions() : null } });
 });
 
+// Last successful printer connection is cached to printer.json (gitignored; holds the LAN access code).
+const printerConfigPath = path.join(rootDir, 'printer.json');
+function readPrinterConfig() {
+  try { return JSON.parse(fs.readFileSync(printerConfigPath, 'utf8')); }
+  catch (err) { if (err.code !== 'ENOENT') console.debug('[aiprint] printer.json unreadable, using defaults:', err.message); return {}; }
+}
+function writePrinterConfig(cfg) {
+  const clean = { ip: String(cfg.ip || '').trim(), accessCode: String(cfg.accessCode || '').trim(), serial: String(cfg.serial || '').trim(), nozzle: cfg.nozzle ? String(cfg.nozzle) : undefined, savedAt: new Date().toISOString() };
+  fs.writeFileSync(printerConfigPath, JSON.stringify(clean, null, 2) + '\n');
+  return clean;
+}
+
+// Return the saved printer profile so the UI can pre-fill the LAN form.
+app.get('/api/printer/config', (req, res) => {
+  res.json({ success: true, data: readPrinterConfig() });
+});
+
+// Persist a printer profile.
+app.post('/api/printer/config', express.json(), (req, res) => {
+  try {
+    const { ip, accessCode, serial, nozzle } = req.body || {};
+    if (!ip || !accessCode || !serial) return res.status(400).json({ success: false, error: '保存需要 IP、Access Code、序列号。' });
+    res.json({ success: true, data: writePrinterConfig({ ip, accessCode, serial, nozzle }) });
+  } catch (err) {
+    console.error('[aiprint] save printer config failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Slice a finished generation into G-code or a 3MF project. Auto-scales to targetMM.
 app.post('/api/slice', express.json(), async (req, res) => {
   try {
@@ -333,6 +362,7 @@ app.post('/api/printer/test', express.json(), async (req, res) => {
     const { ip, accessCode, serial } = req.body || {};
     const logs = [];
     const result = await testPrinterConnection({ ip, accessCode, serial, onLog: (m) => logs.push(m) });
+    try { writePrinterConfig({ ip, accessCode, serial, nozzle: result.printer?.nozzle_diameters?.[0] }); } catch (err) { console.debug('[aiprint] auto-save printer config failed:', err.message); }
     res.json({ success: true, data: { ...result, logs } });
   } catch (err) {
     console.error('[aiprint] printer test failed:', err.message);
